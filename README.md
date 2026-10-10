@@ -15,7 +15,12 @@ python3 llano.py status          # speed 60% (pad control)  lights on  raw 88 3c
 python3 llano.py speed 100       # software control, fan at 100 %
 python3 llano.py speed 0         # fan off
 python3 llano.py release         # hand speed control back to the pad's roller
+python3 llano.py lock            # panic: fan off, and every program using Pad is refused
+python3 llano.py unlock          # back to the speed and control from before the lock
+python3 llano.py last            # who changed the pad last
 ```
+
+The lock and a log of who drove the pad (`control.log`, last 200 writes: `$LLANO_CLIENT`, else the systemd unit, else the script) live in `~/.local/state/llano`. The lock binds everything that goes through `Pad` (this CLI, `llanod`, `cpu_guard`, the research scripts, Froonty's Fan tab); `llanod` and `cpu_guard` wait while it holds. It cannot stop a program that writes `/dev/hidraw*` itself, since the udev rule gives all of the user's programs access: a lock no user program can lift needs a root helper. The pad's roller always works.
 
 If you get `Permission denied`, install the udev rule, which gives the logged-in user access to the pad:
 

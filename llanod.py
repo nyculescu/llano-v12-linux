@@ -23,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-from llano import LlanoError, Pad
+from llano import LlanoError, LlanoLocked, Pad
 
 # (temperature °C, fan %) points, linearly interpolated, clamped at the ends.
 GPU_CURVE = [(65, 30), (75, 40), (80, 60), (84, 80)]
@@ -68,6 +68,7 @@ def main():
     logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
     pad, current, smoothed = None, None, None
+    locked = False
 
     def stop(signum, _frame):
         log.info('signal %d: handing speed control back to the pad', signum)
@@ -100,6 +101,14 @@ def main():
                         log.info('pad changed to %d%% (status %02x); restoring %d%%', st[1], st[0], target)
                     pad.set_speed(target)
                 current = target
+                if locked:
+                    log.info('pad unlocked: driving it again')
+                locked = False
+            except LlanoLocked:
+                # llano.py lock (the panic button): wait without touching it.
+                if not locked:
+                    log.info('pad locked off: waiting for unlock')
+                locked, current = True, None
             except (LlanoError, OSError) as e:
                 log.warning('pad unavailable, retrying: %s', e)
                 if pad:

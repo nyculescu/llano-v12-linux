@@ -20,7 +20,7 @@ import signal
 import sys
 import time
 
-from llano import LlanoError, Pad
+from llano import LlanoError, LlanoLocked, Pad
 from llanod import SMOOTHING, cpu_temp
 
 log = logging.getLogger('cpu_guard')
@@ -46,6 +46,7 @@ def main():
     start = 0         # pad speed when we engaged; stepping below it releases
     last_step = 0.0
     smoothed = None
+    locked = False
 
     def release(reason: str):
         nonlocal speed
@@ -54,6 +55,8 @@ def main():
             try:
                 pad.set_speed(start)  # release keeps the current speed, so restore the starting one first
                 pad.release()
+            except LlanoLocked:
+                log.info('pad locked off: leaving it as it is')
             except (LlanoError, OSError) as e:
                 log.warning('release failed: %s', e)
         speed = None
@@ -96,6 +99,14 @@ def main():
                 st = pad.status()
                 if (st[0], st[1]) != (0x80, speed):
                     pad.set_speed(speed)
+                if locked:
+                    log.info('pad unlocked: guarding again')
+                locked = False
+        except LlanoLocked:
+            # llano.py lock (the panic button): wait without touching it.
+            if not locked:
+                log.info('pad locked off: waiting for unlock')
+            locked = True
         except (LlanoError, OSError) as e:
             log.warning('pad unavailable, retrying: %s', e)
             if pad:
