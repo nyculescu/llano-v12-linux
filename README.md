@@ -4,6 +4,7 @@ Fan control for the **llano V12 Ultra** laptop cooling pad (USB `374a:b101`, "HO
 
 - `llano.py`: read status and set the fan speed from the command line.
 - `llanod.py`: a fan-curve daemon that drives the pad from CPU and GPU temperatures.
+- `cpu_guard.py`: steps the fan up while the CPU is above a threshold, for other tools or scripts to start during heavy jobs.
 
 Neither needs any dependencies beyond Python 3.10+ and access to the pad's `/dev/hidraw*` node.
 
@@ -30,6 +31,16 @@ python3 llanod.py --dry-run      # log what it would do
 cp contrib/llanod.service ~/.config/systemd/user/   # edit the path if the repo lives elsewhere
 systemctl --user enable --now llanod
 ```
+
+### CPU guard
+
+```bash
+systemd-run --user --unit=llano-guard /usr/bin/python3 $PWD/cpu_guard.py   # engage at 95 °C, aim for 92 °C
+journalctl --user -u llano-guard -f                                        # watch it
+systemctl --user stop llano-guard                                          # restore the starting speed and release
+```
+
+It leaves the pad alone until the smoothed CPU package temperature reaches `--high` (95 °C). Then it adds `--step` (10 %) every `--step-every` (15 s) while the CPU is above `--target` (92 °C), and holds once the CPU is at or below it. Once the CPU is `--cool-margin` (5 °C) below the target, it steps back down, restores the starting speed and releases. Don't run it alongside `llanod`, since both rewrite the speed every poll. Given the CPU sweep below, expect it to reach 100 % with the CPU still above the target under an all-core load.
 
 The curve in `llanod.py` maps the NVIDIA GPU temperature (`nvidia-smi`) to fan speed:
 
