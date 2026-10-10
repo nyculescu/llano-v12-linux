@@ -122,7 +122,7 @@ Set-state fields, from the vendor's `SetLapFanParam` builder:
 |---|---|---|
 | 0 | `fan_mode_control` | `0` = the pad keeps its own speed and ignores byte 1; `1` = byte 1 sets the speed |
 | 1 | `fan_speed` | 0–100 % |
-| 2 | `on_off` | `0` on; `1` switches the whole pad off, fan and lights. At 0 % with the pad on, the fan still turns at its slowest, so `llano.py speed 0` (and `lock`) also switch it off |
+| 2 | `on_off` | `0` on; `1` switches the whole pad off, fan and lights (any non-zero acts as `1`; there is no fan off with the lights on). At 0 % with the pad on, the fan still turns at its slowest, so `llano.py speed 0` (and `lock`) also switch it off. `1` sent to a pad already off starts its fan with the lights dark, and the status byte reads `1` either way, so off from anything but on is sent as on at 0 %, then off half a second later |
 | 3 | `light_mode \| light_off << 7` | e.g. `03` = colour chase, `83` = same mode with the lights off |
 | 4–6 | lighting parameters | the app sends `04 00 ff` (brightness 255 is byte 6) |
 | 7 | checksum | `~sum(bytes 0–6) & 0xff` |

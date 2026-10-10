@@ -7,7 +7,8 @@ sum to 0xFF (byte 7 = ~sum of bytes 0-6).
   ctl speed on_off light 04 00 ff cks    set state
       ctl:   fan_mode_control; 0 = pad keeps its own speed, 1 = software sets speed
       speed: fan_speed 0-100 %
-      on_off: 0 = on, 1 = the whole pad off, fan and lights (0 % alone leaves the fan turning)
+      on_off: 0 = on, 1 = the whole pad off, fan and lights (0 % alone leaves the fan turning);
+              any non-zero acts as 1, and 1 sent to a pad already off starts its fan, lights dark
       light: light_mode | light_off << 7; bytes 4-6 are the remaining light parameters
   80 00 00 00 00 00 00 7f                request status; GET_FEATURE then returns
   st speed on_off light 04 00 ff cks     status (st 0x88 under pad control, 0x80 under software)
@@ -46,8 +47,12 @@ import noise
 VID, PID = 0x374A, 0xB101
 CTL_PAD, CTL_SOFTWARE = 0x00, 0x01
 # Byte 2. 0 % with the pad on still turns the fan at its slowest; only `off` stops it,
-# and it puts the lights out with it (confirmed by eye and ear, 2026-10-10).
+# and it puts the lights out with it: there is no fan-off-lights-on (2 acts as 1). `off`
+# sent to a pad already off starts its fan again with the lights dark, and the status
+# byte cannot tell that from off, so off from anything but on goes through on first.
+# All confirmed by eye and ear, 2026-10-10.
 PAD_ON, PAD_OFF = 0x00, 0x01
+OFF_AFTER_ON_S = 0.5
 
 
 class LlanoError(Exception):
@@ -171,6 +176,10 @@ class Pad:
         cur = self.status()  # keep the lighting as it is
         # Software at 0 % switches the pad off; any speed, or the roller, switches it on.
         power = PAD_OFF if ctl == CTL_SOFTWARE and speed == 0 else PAD_ON
+        if power == PAD_OFF and cur[2] != PAD_ON:
+            # Off or half off (fan on, lights dark): on at 0 % first (a short flash), then off.
+            self._set_feature(command(bytes([ctl, 0, PAD_ON, cur[3], cur[4], cur[5], cur[6]])))
+            time.sleep(OFF_AFTER_ON_S)
         self._set_feature(command(bytes([ctl, speed, power, cur[3], cur[4], cur[5], cur[6]])))
         log_control(action, speed, requested)
 
