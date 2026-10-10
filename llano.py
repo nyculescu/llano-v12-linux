@@ -7,13 +7,14 @@ sum to 0xFF (byte 7 = ~sum of bytes 0-6).
   ctl speed on_off light 04 00 ff cks    set state
       ctl:   fan_mode_control; 0 = pad keeps its own speed, 1 = software sets speed
       speed: fan_speed 0-100 %
+      on_off: 0 = on, 1 = the whole pad off, fan and lights (0 % alone leaves the fan turning)
       light: light_mode | light_off << 7; bytes 4-6 are the remaining light parameters
   80 00 00 00 00 00 00 7f                request status; GET_FEATURE then returns
   st speed on_off light 04 00 ff cks     status (st 0x88 under pad control, 0x80 under software)
   81 00 00 00 00 00 00 7e                request version; answered on the interrupt IN endpoint
 
   python3 llano.py status
-  python3 llano.py speed 0-100     # take software control and set the fan speed
+  python3 llano.py speed 0-100     # take software control and set the fan speed (0: the pad off)
   python3 llano.py release         # hand speed control back to the pad's buttons
   python3 llano.py lock            # fan off; every Pad write is refused until unlock
   python3 llano.py unlock          # back to the speed and control from before the lock
@@ -44,6 +45,9 @@ import noise
 
 VID, PID = 0x374A, 0xB101
 CTL_PAD, CTL_SOFTWARE = 0x00, 0x01
+# Byte 2. 0 % with the pad on still turns the fan at its slowest; only `off` stops it,
+# and it puts the lights out with it (confirmed by eye and ear, 2026-10-10).
+PAD_ON, PAD_OFF = 0x00, 0x01
 
 
 class LlanoError(Exception):
@@ -164,8 +168,10 @@ class Pad:
                      requested: int | None = None) -> None:
         if not unlocked and read_lock() is not None:
             raise LlanoLocked('the pad is locked off (llano.py unlock to start it again)')
-        cur = self.status()  # keep on/off and lighting as they are
-        self._set_feature(command(bytes([ctl, speed, cur[2], cur[3], cur[4], cur[5], cur[6]])))
+        cur = self.status()  # keep the lighting as it is
+        # Software at 0 % switches the pad off; any speed, or the roller, switches it on.
+        power = PAD_OFF if ctl == CTL_SOFTWARE and speed == 0 else PAD_ON
+        self._set_feature(command(bytes([ctl, speed, power, cur[3], cur[4], cur[5], cur[6]])))
         log_control(action, speed, requested)
 
     def set_speed(self, pct: int, action: str = 'speed') -> int:
@@ -217,7 +223,9 @@ class Pad:
 def describe(rep: bytes) -> str:
     """The status line, then a `noise {json}` line: rpm and dB estimates and the limit in force."""
     ctl = 'software' if rep[0] == 0x80 else 'pad'
-    line = f'speed {rep[1]}% ({ctl} control)  lights {"off" if rep[3] & 0x80 else "on"}  raw {rep.hex(" ")}'
+    lights = 'off' if rep[3] & 0x80 or rep[2] == PAD_OFF else 'on'
+    power = '  pad off' if rep[2] == PAD_OFF else ''
+    line = f'speed {rep[1]}% ({ctl} control){power}  lights {lights}  raw {rep.hex(" ")}'
     return line + '\nnoise ' + json.dumps(noise.describe(rep[1]))
 
 
