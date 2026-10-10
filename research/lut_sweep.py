@@ -119,10 +119,12 @@ class GpuLoad:
 
 
 def check_idle():
-    before = cpu_times()
-    time.sleep(3)
+    before, gpus = cpu_times(), []
+    for _ in range(3):  # the median: one reading can catch the GPU waking up
+        gpus.append(gpu_sample()[1])
+        time.sleep(1)
     util = cpu_util(before, cpu_times())
-    gpu = gpu_sample()[1]
+    gpu = statistics.median(gpus)
     if util > 10 or gpu > 10:
         sys.exit(f'not idle: CPU {util:.0f} %, GPU {gpu:.0f} %; stop other work first')
 

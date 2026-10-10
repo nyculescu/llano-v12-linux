@@ -18,7 +18,11 @@ python3 llano.py release         # hand speed control back to the pad's roller
 python3 llano.py lock            # panic: fan off, and every program using Pad is refused
 python3 llano.py unlock          # back to the speed and control from before the lock
 python3 llano.py last            # who changed the pad last
+python3 llano.py loud            # lift the noise limits until quiet hours end
+python3 llano.py quiet           # back to the noise limits
 ```
+
+**Noise limits** ([NOISE.md](NOISE.md)): every speed is capped to 600 rpm (12 %) in quiet hours (weekdays 22:00–07:00) and 2000 rpm (68 %) by day, unless lifted with `loud`. `contrib/install-enforcer.sh` installs a user timer that lowers a software-set speed above the limit every 5 minutes; the roller is left alone. The status output's second line, `noise {json}`, gives the estimated rpm and dB at the ears and the limit in force.
 
 The lock and a log of who drove the pad (`control.log`, last 200 writes: `$LLANO_CLIENT`, else the systemd unit, else the script) live in `~/.local/state/llano`. The lock binds everything that goes through `Pad` (this CLI, `llanod`, `cpu_guard`, the research scripts, Froonty's Fan tab); `llanod` and `cpu_guard` wait while it holds. It cannot stop a program that writes `/dev/hidraw*` itself, since the udev rule gives all of the user's programs access: a lock no user program can lift needs a root helper. The pad's roller always works.
 

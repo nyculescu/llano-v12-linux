@@ -1,0 +1,11 @@
+[Unit]
+Description=llano V12 Ultra pad: check the noise limit every 5 minutes
+
+[Timer]
+OnCalendar=*:0/5
+# Also right when quiet hours start (NOISE.md: weekdays 22:00).
+OnCalendar=Mon..Fri 22:00
+Persistent=false
+
+[Install]
+WantedBy=timers.target

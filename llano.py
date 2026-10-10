@@ -18,12 +18,20 @@ sum to 0xFF (byte 7 = ~sum of bytes 0-6).
   python3 llano.py lock            # fan off; every Pad write is refused until unlock
   python3 llano.py unlock          # back to the speed and control from before the lock
   python3 llano.py last            # who changed the pad last (control.log)
+  python3 llano.py loud            # lift the noise limits until quiet hours end (or for 2 h by day)
+  python3 llano.py quiet           # back to the noise limits
+  python3 llano.py noise           # the noise limit in force, as JSON
+  python3 llano.py enforce         # lower a software-set speed above the limit (the timer runs this)
 
 The lock and the control log live in $XDG_STATE_HOME/llano (~/.local/state/llano). The lock
 binds every program that drives the pad through Pad (this CLI, llanod, cpu_guard, the
 research scripts, Froonty's Fan tab); a program writing /dev/hidraw* itself is not stopped,
 since the udev rule gives every program of the user access. The pad's roller still works.
 Each write logs who made it: $LLANO_CLIENT, else the systemd unit, else the script.
+
+Noise limits (noise.py, NOISE.md): every speed is capped to the limit in force (600 rpm in quiet
+hours, weekdays 22:00-07:00; 2000 rpm by day), unless `llano.py loud` lifted it. A speed the pad
+holds under its own control (the roller) is the user's and is left alone.
 """
 import fcntl
 import json
@@ -31,6 +39,8 @@ import os
 import sys
 import time
 from pathlib import Path
+
+import noise
 
 VID, PID = 0x374A, 0xB101
 CTL_PAD, CTL_SOFTWARE = 0x00, 0x01
@@ -82,8 +92,10 @@ def client() -> str:
     return script
 
 
-def log_control(action: str, speed: int | None) -> None:
+def log_control(action: str, speed: int | None, requested: int | None = None) -> None:
     entry = {'time': round(time.time(), 1), 'by': client(), 'pid': os.getpid(), 'action': action, 'speed': speed}
+    if requested is not None and requested != speed:
+        entry['requested'] = requested
     try:
         state_dir().mkdir(parents=True, exist_ok=True)
         path = state_dir() / 'control.log'
@@ -148,17 +160,33 @@ class Pad:
             raise LlanoError(f'unexpected status report: {rep.hex(" ")}')
         return rep
 
-    def _write_state(self, ctl: int, speed: int, action: str, *, unlocked: bool = False) -> None:
+    def _write_state(self, ctl: int, speed: int, action: str, *, unlocked: bool = False,
+                     requested: int | None = None) -> None:
         if not unlocked and read_lock() is not None:
             raise LlanoLocked('the pad is locked off (llano.py unlock to start it again)')
         cur = self.status()  # keep on/off and lighting as they are
         self._set_feature(command(bytes([ctl, speed, cur[2], cur[3], cur[4], cur[5], cur[6]])))
-        log_control(action, speed)
+        log_control(action, speed, requested)
 
-    def set_speed(self, pct: int) -> None:
+    def set_speed(self, pct: int, action: str = 'speed') -> int:
+        """Sets the speed, capped to the noise limit in force; returns the speed set."""
         if not 0 <= pct <= 100:
             raise LlanoError(f'speed must be 0-100, got {pct}')
-        self._write_state(CTL_SOFTWARE, pct, 'speed')
+        applied = min(pct, noise.limit()['max_percent'])
+        self._write_state(CTL_SOFTWARE, applied, action, requested=pct)
+        return applied
+
+    def enforce(self) -> bool:
+        """Lowers a software-set speed above the limit in force; True when it did."""
+        if read_lock() is not None:
+            return False
+        st = self.status()
+        if st[0] != 0x80:  # under the pad's own control: the roller is the user's choice
+            return False
+        if st[1] <= noise.limit()['max_percent']:
+            return False
+        self.set_speed(st[1], 'enforce')
+        return True
 
     def release(self) -> None:
         self._write_state(CTL_PAD, self.status()[1], 'release')
@@ -181,14 +209,16 @@ class Pad:
             return
         (state_dir() / 'lock').unlink(missing_ok=True)
         speed = record.get('speed', 0) if isinstance(record.get('speed'), int) else 0
-        self._write_state(CTL_SOFTWARE, speed, 'unlock')
+        self.set_speed(speed, 'unlock')
         if record.get('ctl') == 'pad':
             self.release()
 
 
 def describe(rep: bytes) -> str:
+    """The status line, then a `noise {json}` line: rpm and dB estimates and the limit in force."""
     ctl = 'software' if rep[0] == 0x80 else 'pad'
-    return f'speed {rep[1]}% ({ctl} control)  lights {"off" if rep[3] & 0x80 else "on"}  raw {rep.hex(" ")}'
+    line = f'speed {rep[1]}% ({ctl} control)  lights {"off" if rep[3] & 0x80 else "on"}  raw {rep.hex(" ")}'
+    return line + '\nnoise ' + json.dumps(noise.describe(rep[1]))
 
 
 def main():
@@ -196,6 +226,9 @@ def main():
     if args == ['last']:
         entry = last_control()
         print(json.dumps(entry) if entry else 'no control logged yet')
+        return
+    if args == ['noise']:
+        print(json.dumps(noise.limit()))
         return
     try:
         with Pad() as pad:
@@ -209,6 +242,13 @@ def main():
                 pad.lock()
             elif args == ['unlock']:
                 pad.unlock()
+            elif args == ['enforce']:
+                pad.enforce()
+            elif args in (['loud'], ['quiet']):
+                noise.set_override(args == ['loud'])
+                log_control(args[0], None)
+                if args == ['quiet']:
+                    pad.enforce()
             else:
                 sys.exit(__doc__)
             time.sleep(0.1)
