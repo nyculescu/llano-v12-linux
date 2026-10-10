@@ -6,6 +6,10 @@ with a phone app, research/noise_2026-10-09.txt). The limits: a cap during quiet
 (weekdays 22:00-07:00, 600 rpm) and a daytime cap (2000 rpm). `llano.py loud` lifts them until
 the end of the current quiet hours (or for DAY_OVERRIDE_H hours by day).
 
+Focus (Froonty's Quick Settings toggle, $XDG_STATE_HOME/focus/mode.json): Sleeping holds the
+quiet-hours cap at any time, Away the away cap (AWAY_MAX_RPM, none by default: nobody is home to
+hear it); Working and Auto keep the clock's caps.
+
 Every value can be overridden in $XDG_CONFIG_HOME/llano/noise.json (same keys, lower case).
 """
 import datetime
@@ -31,6 +35,8 @@ DEFAULTS = {
     'quiet_max_rpm': 600,
     'day_max_rpm': 2000,
     'day_override_h': 2,
+    # The cap while Focus is Away; null: none.
+    'away_max_rpm': None,
     # Bands for warnings: the highest rpm of each, then their names (NOISE.md).
     'bands': [[400, 'quiet'], [600, 'night'], [1000, 'audible'], [2000, 'loud'], [100000, 'very loud']],
 }
@@ -128,19 +134,41 @@ def set_override(on: bool) -> float | None:
     return until.timestamp()
 
 
+FOCUS_MODES = ('working', 'sleeping', 'away', 'auto')
+
+
+def focus() -> str:
+    """The Focus mode Froonty set ($XDG_STATE_HOME/focus/mode.json); 'auto' when none."""
+    root = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
+    try:
+        mode = json.loads((root / 'focus/mode.json').read_text()).get('mode')
+    except (OSError, ValueError, AttributeError):
+        return 'auto'
+    return mode if mode in FOCUS_MODES else 'auto'
+
+
 def limit(now: datetime.datetime | None = None) -> dict:
-    """The cap in force: {quiet, until (ISO), max_rpm, max_percent, override_until}."""
+    """The cap in force: {quiet, until (ISO), max_rpm, max_percent, override_until, focus}."""
     p = policy()
     now = now or datetime.datetime.now()
     is_quiet, change = quiet_window(now, p)
     over = override_until()
-    max_rpm = None if over else (p['quiet_max_rpm'] if is_quiet else p['day_max_rpm'])
+    mode = focus()
+    if over:
+        max_rpm = None
+    elif mode == 'away':
+        max_rpm = p['away_max_rpm']
+    elif mode == 'sleeping':
+        max_rpm = p['quiet_max_rpm']
+    else:
+        max_rpm = p['quiet_max_rpm'] if is_quiet else p['day_max_rpm']
     return {
         'quiet': is_quiet,
         'until': change.isoformat(timespec='minutes') if change else None,
         'max_rpm': max_rpm,
         'max_percent': 100 if max_rpm is None else percent(max_rpm, p),
         'override_until': over,
+        'focus': mode,
         'mapping_measured': p['percent_rpm_measured'],
     }
 
