@@ -1,0 +1,20 @@
+Pad noise, measured by the user with an Android phone sound meter app (not calibrated;
+differences between readings are what count), 2026-10-09. rpm as the pad's display shows it.
+
+rpm   dB    user's words
+ 300  57
+ 400        bearable, enough for normal use (user's view)
+1000        noisy already
+1175  75-76
+1500        like a small vacuum cleaner
+1550  79
+2000        sometimes needed to bring a temperature down
+2800        unbearable
+
+Fit to the three readings: dB ~ 57 + 30 * log10(rpm / 300), i.e. about +30 dB per tenfold rpm
+(300 -> 1175: +18.5 dB over x3.9; 1175 -> 1550: +3.5 dB over x1.32). Predicted: 400 rpm ~61 dB,
+1000 ~73, 2000 ~82, 2800 ~86.
+
+Percent -> rpm is not measured. One README observation (after 50 %, one roller step gave
+1550 rpm) suggests about 29 rpm per percent, so 400 rpm ~14 %, 1000 ~35 %, 1500 ~52 %,
+2000 ~70 %; to be checked against the display.

@@ -11,7 +11,10 @@ Writes research/lut_sweep_DATE.csv row by row as .partial and renames it when do
 Always stops the load, puts the fan back to its starting speed and releases the pad. Stops if the GPU reaches GPU_ABORT_C.
 Stop llanod and llano-guard first (they would override the fixed speeds).
 
-    python3 research/lut_sweep.py [gpu] [cpu]
+    python3 research/lut_sweep.py [gpu] [cpu] [--fans 0,7,14] [--loads 100,70] [--tag fine]
+
+Under GPU load the CPU's throttling is recorded too (other_throttle_pct): the GPU heats the
+CPU through the shared heatpipes, and that is often what needs the fan.
 """
 import csv
 import datetime
@@ -40,7 +43,8 @@ if os.environ.get('LUT_SWEEP_QUICK'):  # a smoke test of the whole run, about a 
 GPU_ABORT_C = 92
 GPU_STRESS = HERE / 'gpu_stress'
 THROTTLE_MS = Path('/sys/devices/system/cpu/cpu0/thermal_throttle/package_throttle_total_time_ms')
-FIELDS = ['device', 'load', 'fan', 'temp', 'other_temp', 'util', 'power_w', 'clock_mhz', 'throttle_pct']
+FIELDS = ['device', 'load', 'fan', 'temp', 'other_temp', 'util', 'power_w', 'clock_mhz', 'throttle_pct',
+          'other_throttle_pct']
 
 
 def gpu_sample():
@@ -138,24 +142,43 @@ def measure(device, seconds):
             temps.append(cpu_temp()), clocks.append(mean_clock_mhz())
         time.sleep(SAMPLE_S)
     elapsed = time.monotonic() - t0
+    cpu_throttle = 100 * (int(THROTTLE_MS.read_text()) - thr0) / (elapsed * 1000)
     if device == 'gpu':
         util, power, throttle = statistics.mean(utils), statistics.mean(powers), 100 * throttled / len(temps)
-        other = statistics.mean(others)
+        other, other_throttle = statistics.mean(others), cpu_throttle
     else:
-        util, power, other = cpu_util(cpu0, cpu_times()), '', ''
-        throttle = 100 * (int(THROTTLE_MS.read_text()) - thr0) / (elapsed * 1000)
+        util, power, other, other_throttle = cpu_util(cpu0, cpu_times()), '', '', ''
+        throttle = cpu_throttle
     r = lambda v: round(v, 1) if v != '' else ''
-    return [r(statistics.mean(temps)), r(other), r(util), r(power), round(statistics.mean(clocks)), r(throttle)]
+    return [r(statistics.mean(temps)), r(other), r(util), r(power), round(statistics.mean(clocks)), r(throttle),
+            r(other_throttle)]
+
+
+def option(args, name, default):
+    if name in args:
+        i = args.index(name)
+        value = args[i + 1]
+        del args[i:i + 2]
+        return value
+    return default
 
 
 def main():
-    devices = sys.argv[1:] or ['gpu', 'cpu']
+    global LOADS, FANS
+    args = sys.argv[1:]
+    try:
+        FANS = [int(v) for v in option(args, '--fans', ','.join(map(str, FANS))).split(',')]
+        LOADS = [int(v) for v in option(args, '--loads', ','.join(map(str, LOADS))).split(',')]
+        tag = option(args, '--tag', '')
+    except (IndexError, ValueError):
+        sys.exit(__doc__)
+    devices = args or ['gpu', 'cpu']
     if any(d not in ('gpu', 'cpu') for d in devices):
         sys.exit(__doc__)
     if 'gpu' in devices and not GPU_STRESS.exists():
         sys.exit(f'build {GPU_STRESS} first (see gpu_stress.cu)')
     check_idle()
-    out = HERE / f'lut_sweep_{datetime.date.today()}.csv'
+    out = HERE / f'lut_sweep_{datetime.date.today()}{"_" + tag if tag else ""}.csv'
     partial = out.with_suffix('.csv.partial')
     cells = len(devices) * len(LOADS) * len(FANS)
     per_device = PREHEAT_S + (len(LOADS) - 1) * LOAD_SETTLE_S
