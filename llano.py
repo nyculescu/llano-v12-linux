@@ -15,9 +15,11 @@ sum to 0xFF (byte 7 = ~sum of bytes 0-6).
   81 00 00 00 00 00 00 7e                request version; answered on the interrupt IN endpoint
 
   python3 llano.py status
-  python3 llano.py speed 0-100     # take software control and set the fan speed (0: the pad off)
+  python3 llano.py speed 0-100     # take software control and set the fan speed (the pad on, lights too;
+                                   # at 0 % the fan still turns at its slowest)
+  python3 llano.py off             # the whole pad off: fan and lights
   python3 llano.py release         # hand speed control back to the pad's buttons
-  python3 llano.py lock            # fan off; every Pad write is refused until unlock
+  python3 llano.py lock            # the pad off; every Pad write is refused until unlock
   python3 llano.py unlock          # back to the speed and control from before the lock
   python3 llano.py last            # who changed the pad last (control.log)
   python3 llano.py loud            # lift the noise limits until quiet hours end (or for 2 h by day)
@@ -170,12 +172,10 @@ class Pad:
         return rep
 
     def _write_state(self, ctl: int, speed: int, action: str, *, unlocked: bool = False,
-                     requested: int | None = None) -> None:
+                     requested: int | None = None, power: int = PAD_ON) -> None:
         if not unlocked and read_lock() is not None:
             raise LlanoLocked('the pad is locked off (llano.py unlock to start it again)')
         cur = self.status()  # keep the lighting as it is
-        # Software at 0 % switches the pad off; any speed, or the roller, switches it on.
-        power = PAD_OFF if ctl == CTL_SOFTWARE and speed == 0 else PAD_ON
         if power == PAD_OFF and cur[2] != PAD_ON:
             # Off or half off (fan on, lights dark): on at 0 % first (a short flash), then off.
             self._set_feature(command(bytes([ctl, 0, PAD_ON, cur[3], cur[4], cur[5], cur[6]])))
@@ -206,23 +206,30 @@ class Pad:
     def release(self) -> None:
         self._write_state(CTL_PAD, self.status()[1], 'release')
 
+    def off(self, action: str = 'off', *, unlocked: bool = False) -> None:
+        """The whole pad off, fan and lights, under software control; any speed switches it on."""
+        self._write_state(CTL_SOFTWARE, 0, action, unlocked=unlocked, power=PAD_OFF)
+
     def lock(self) -> None:
         """Fan off under software control, and refuse every write until unlock()."""
         if read_lock() is not None:
             return
         cur = self.status()
         record = {'time': round(time.time(), 1), 'by': client(), 'speed': cur[1],
-                  'ctl': 'software' if cur[0] == 0x80 else 'pad'}
-        self._write_state(CTL_SOFTWARE, 0, 'lock', unlocked=True)
+                  'ctl': 'software' if cur[0] == 0x80 else 'pad', 'off': cur[2] != PAD_ON}
+        self.off('lock', unlocked=True)
         state_dir().mkdir(parents=True, exist_ok=True)
         (state_dir() / 'lock').write_text(json.dumps(record) + '\n')
 
     def unlock(self) -> None:
-        """Back to the speed (and the pad's control, if it had it) from before the lock."""
+        """Back to the speed (and the pad's control, if it had it) from before the lock, or off."""
         record = read_lock()
         if record is None:
             return
         (state_dir() / 'lock').unlink(missing_ok=True)
+        if record.get('off'):
+            self.off('unlock')
+            return
         speed = record.get('speed', 0) if isinstance(record.get('speed'), int) else 0
         self.set_speed(speed, 'unlock')
         if record.get('ctl') == 'pad':
@@ -235,7 +242,7 @@ def describe(rep: bytes) -> str:
     lights = 'off' if rep[3] & 0x80 or rep[2] == PAD_OFF else 'on'
     power = '  pad off' if rep[2] == PAD_OFF else ''
     line = f'speed {rep[1]}% ({ctl} control){power}  lights {lights}  raw {rep.hex(" ")}'
-    return line + '\nnoise ' + json.dumps(noise.describe(rep[1]))
+    return line + '\nnoise ' + json.dumps(noise.describe(rep[1], off=rep[2] != PAD_ON))
 
 
 def main():
@@ -255,6 +262,8 @@ def main():
                 pad.set_speed(int(args[1]))
             elif args == ['release']:
                 pad.release()
+            elif args == ['off']:
+                pad.off()
             elif args == ['lock']:
                 pad.lock()
             elif args == ['unlock']:

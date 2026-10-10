@@ -13,7 +13,8 @@ Neither needs any dependencies beyond Python 3.10+ and access to the pad's `/dev
 ```bash
 python3 llano.py status          # speed 60% (pad control)  lights on  raw 88 3c 00 03 04 00 ff 35
 python3 llano.py speed 100       # software control, fan at 100 %
-python3 llano.py speed 0         # the pad off (fan and lights)
+python3 llano.py speed 0         # lowest speed, 300 rpm: 0 % does not stop the fan
+python3 llano.py off             # the pad off, fan and lights
 python3 llano.py release         # hand speed control back to the pad's roller
 python3 llano.py lock            # panic: fan off, and every program using Pad is refused
 python3 llano.py unlock          # back to the speed and control from before the lock
@@ -81,7 +82,7 @@ It leaves the pad alone until the smoothed CPU package temperature reaches `--hi
 
 ### Fan recommendation table
 
-`fan_lut.json` gives a fan speed for the CPU and the GPU temperatures; Froonty's Fan tab shows it with an Apply button. It comes from a load × fan sweep on this laptop (i9-13980HX, RTX 4080 Laptop GPU): each device from full load down to idle (100/70/40/20/0 %, idle under 5 % utilization), the pad at 100/60/30/0 % at each load, 60 s to settle and 45 s measured (`research/lut_sweep_2026-10-09.csv`, 82 min). Its 0 % predates `speed 0` switching the pad off: the fan turned at its slowest then, it was not stopped.
+`fan_lut.json` gives a fan speed for the CPU and the GPU temperatures; Froonty's Fan tab shows it with an Apply button. It comes from a load × fan sweep on this laptop (i9-13980HX, RTX 4080 Laptop GPU): each device from full load down to idle (100/70/40/20/0 %, idle under 5 % utilization), the pad at 100/60/30/0 % at each load, 60 s to settle and 45 s measured (`research/lut_sweep_2026-10-09.csv`, 82 min). Its 0 % is the pad on at 0 %: the fan turned at its slowest (300 rpm), it was not stopped.
 
 ```bash
 nvcc -O3 -Xcompiler -U_GNU_SOURCE -o research/gpu_stress research/gpu_stress.cu   # CUDA load generator
@@ -122,7 +123,7 @@ Set-state fields, from the vendor's `SetLapFanParam` builder:
 |---|---|---|
 | 0 | `fan_mode_control` | `0` = the pad keeps its own speed and ignores byte 1; `1` = byte 1 sets the speed |
 | 1 | `fan_speed` | 0–100 % |
-| 2 | `on_off` | `0` on; `1` switches the whole pad off, fan and lights (any non-zero acts as `1`; there is no fan off with the lights on). At 0 % with the pad on, the fan still turns at its slowest, so `llano.py speed 0` (and `lock`) also switch it off. `1` sent to a pad already off starts its fan with the lights dark, and the status byte reads `1` either way, so off from anything but on is sent as on at 0 %, then off half a second later |
+| 2 | `on_off` | `0` on; `1` switches the whole pad off, fan and lights (any non-zero acts as `1`; there is no fan off with the lights on). At 0 % with the pad on, the fan still turns at its slowest (300 rpm, like 1 %), so stopping it takes `llano.py off` (and `lock`), which put the lights out too. `1` sent to a pad already off starts its fan with the lights dark, and the status byte reads `1` either way, so off from anything but on is sent as on at 0 %, then off half a second later |
 | 3 | `light_mode \| light_off << 7` | e.g. `03` = colour chase, `83` = same mode with the lights off |
 | 4–6 | lighting parameters | the app sends `04 00 ff` (brightness 255 is byte 6) |
 | 7 | checksum | `~sum(bytes 0–6) & 0xff` |

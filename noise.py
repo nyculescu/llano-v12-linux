@@ -14,10 +14,11 @@ import os
 from pathlib import Path
 
 DEFAULTS = {
-    # [percent, rpm]: rpm ~ 300 + 25 x percent from 2 % up; 1 % is the pad's lowest level, 300 rpm.
-    # Measured on the pad's display: 1 % 300 rpm, 2 % 350 rpm, 12 % 600 rpm (2026-10-09/10).
+    # [percent, rpm]: rpm ~ 300 + 25 x percent from 2 % up; 0 % and 1 % are the pad's lowest
+    # level, 300 rpm (only `llano.py off` stops the fan). Measured on the pad's display: 0 % and
+    # 1 % 300 rpm, 2 % 350 rpm, 12 % 600 rpm (2026-10-09/10).
     # Assumed: 100 % is the pad's top level, 2800 rpm (consistent with the README's 50 % ~ 1550 rpm).
-    'percent_rpm': [[0, 0], [1, 300], [2, 350], [12, 600], [100, 2800]],
+    'percent_rpm': [[0, 300], [1, 300], [2, 350], [12, 600], [100, 2800]],
     'percent_rpm_measured': 'partly',
     # [rpm, dB at the user's ears], 2026-10-09; the laptop alone was 37.5 dB.
     'ear_db': [[0, 37.5], [300, 40.5], [400, 43.0], [500, 45.5], [600, 49.5], [700, 51.5],
@@ -144,7 +145,8 @@ def limit(now: datetime.datetime | None = None) -> dict:
     }
 
 
-def describe(speed_percent: int) -> dict:
+def describe(speed_percent: int, off: bool = False) -> dict:
+    """rpm, dB at the ears and band for a speed; off (the pad switched off) is 0 rpm."""
     p = policy()
-    r = rpm(speed_percent, p)
+    r = 0 if off else rpm(speed_percent, p)
     return {'rpm': r, 'ear_db': ear_db(r, p), 'band': band(r, p), 'limit': limit()}
