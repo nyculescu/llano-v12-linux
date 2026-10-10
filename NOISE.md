@@ -24,7 +24,7 @@ These are phone sound-meter readings at the user's ears, taken on 2026-10-09 (`r
 
 At low activity, the speed made no difference to the temperatures between 500 and 800 rpm (CPU 40–41 °C, GPU 32–33 °C).
 
-**Percent to rpm:** rpm ≈ 300 + 25 × percent. The pad's display read 600 rpm at 12 %, which is the one measured point. The other two anchors are assumptions: 300 rpm is the lowest level and 2800 rpm the top at 100 %. The line agrees with an older observation of 50 % ≈ 1550 rpm. More readings from the display would firm it up.
+**Percent to rpm:** rpm ≈ 300 + 25 × percent from 2 % up, and 1 % is the pad's lowest level, 300 rpm. Measured on the pad's display: 1 % → 300 rpm, 2 % → 350 rpm, 12 % → 600 rpm. 2800 rpm at 100 % is an assumption. The line agrees with an older observation of 50 % ≈ 1550 rpm. More readings from the display would firm it up.
 
 | percent | 4 | 12 | 28 | 35 | 48 | 68 | 100 |
 |---|---|---|---|---|---|---|---|
