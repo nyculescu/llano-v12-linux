@@ -1,0 +1,129 @@
+{
+ "source": "lut_sweep_2026-10-09.csv",
+ "built": "2026-10-09",
+ "rule": "slowest fan within 1.5 \u00b0C of the coolest at each load, at most 2.0 points more throttling; the higher of the devices leads",
+ "devices": {
+  "gpu": {
+   "rows": [
+    [
+     31.0,
+     30
+    ],
+    [
+     42.3,
+     30
+    ],
+    [
+     47.1,
+     60
+    ],
+    [
+     54.9,
+     60
+    ],
+    [
+     64.0,
+     60
+    ]
+   ],
+   "loads": [
+    {
+     "load": 100,
+     "fan": 60,
+     "temp": 64.0,
+     "coolest": 63.0,
+     "fan_spread_c": 8.7
+    },
+    {
+     "load": 70,
+     "fan": 60,
+     "temp": 54.9,
+     "coolest": 54.3,
+     "fan_spread_c": 6.9
+    },
+    {
+     "load": 40,
+     "fan": 60,
+     "temp": 47.1,
+     "coolest": 46.5,
+     "fan_spread_c": 5.0
+    },
+    {
+     "load": 20,
+     "fan": 30,
+     "temp": 42.3,
+     "coolest": 41.5,
+     "fan_spread_c": 3.5
+    },
+    {
+     "load": 0,
+     "fan": 30,
+     "temp": 31.0,
+     "coolest": 31.0,
+     "fan_spread_c": 1.7
+    }
+   ]
+  },
+  "cpu": {
+   "rows": [
+    [
+     40.5,
+     30
+    ],
+    [
+     58.1,
+     30
+    ],
+    [
+     84.3,
+     100
+    ],
+    [
+     87.4,
+     100
+    ],
+    [
+     90.4,
+     100
+    ]
+   ],
+   "loads": [
+    {
+     "load": 100,
+     "fan": 100,
+     "temp": 87.4,
+     "coolest": 87.4,
+     "fan_spread_c": 7.4
+    },
+    {
+     "load": 70,
+     "fan": 100,
+     "temp": 90.4,
+     "coolest": 90.4,
+     "fan_spread_c": 4.6
+    },
+    {
+     "load": 40,
+     "fan": 100,
+     "temp": 84.3,
+     "coolest": 84.3,
+     "fan_spread_c": 8.5
+    },
+    {
+     "load": 20,
+     "fan": 30,
+     "temp": 58.1,
+     "coolest": 58.1,
+     "fan_spread_c": 9.5
+    },
+    {
+     "load": 0,
+     "fan": 30,
+     "temp": 40.5,
+     "coolest": 39.7,
+     "fan_spread_c": 2.4
+    }
+   ]
+  }
+ }
+}

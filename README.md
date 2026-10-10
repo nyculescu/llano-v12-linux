@@ -32,16 +32,6 @@ cp contrib/llanod.service ~/.config/systemd/user/   # edit the path if the repo 
 systemctl --user enable --now llanod
 ```
 
-### CPU guard
-
-```bash
-systemd-run --user --unit=llano-guard /usr/bin/python3 $PWD/cpu_guard.py   # engage at 95 °C, aim for 92 °C
-journalctl --user -u llano-guard -f                                        # watch it
-systemctl --user stop llano-guard                                          # restore the starting speed and release
-```
-
-It leaves the pad alone until the smoothed CPU package temperature reaches `--high` (95 °C). Then it adds `--step` (10 %) every `--step-every` (15 s) while the CPU is above `--target` (92 °C), and holds once the CPU is at or below it. Once the CPU is `--cool-margin` (5 °C) below the target, it steps back down, restores the starting speed and releases. Don't run it alongside `llanod`, since both rewrite the speed every poll. Given the CPU sweep below, expect it to reach 100 % with the CPU still above the target under an all-core load.
-
 The curve in `llanod.py` maps the NVIDIA GPU temperature (`nvidia-smi`) to fan speed:
 
 | GPU °C | ≤65 | 75 | 80 | ≥84 |
@@ -69,6 +59,42 @@ The CPU doesn't drive the fan at all, because the pad does almost nothing for it
 The extra cooling shows up only as about 3 % more clock, which isn't worth the noise.
 
 The temperature is smoothed, and speed rises immediately but drops only after a 3 °C fall. Each poll the daemon reads the pad's status and rewrites the speed if the pad isn't already there under software control. So while it runs, the pad's roller is overridden within a couple of seconds. Stopping the service (`systemctl --user stop llanod`) hands control back to the roller. If the pad disappears, the daemon logs it and reconnects when it comes back.
+
+### CPU guard
+
+```bash
+systemd-run --user --unit=llano-guard /usr/bin/python3 $PWD/cpu_guard.py   # engage at 95 °C, aim for 92 °C
+journalctl --user -u llano-guard -f                                        # watch it
+systemctl --user stop llano-guard                                          # restore the starting speed and release
+```
+
+It leaves the pad alone until the smoothed CPU package temperature reaches `--high` (95 °C). Then it adds `--step` (10 %) every `--step-every` (15 s) while the CPU is above `--target` (92 °C), and holds once the CPU is at or below it. Once the CPU is `--cool-margin` (5 °C) below the target, it steps back down, restores the starting speed and releases. Don't run it alongside `llanod`, since both rewrite the speed every poll. Given the CPU sweep below, expect it to reach 100 % with the CPU still above the target under an all-core load.
+
+### Fan recommendation table
+
+`fan_lut.json` gives a fan speed for the CPU and the GPU temperatures; Froonty's Fan tab shows it with an Apply button. It comes from a load × fan sweep on this laptop (i9-13980HX, RTX 4080 Laptop GPU): each device from full load down to idle (100/70/40/20/0 %, idle under 5 % utilization), the pad at 100/60/30/0 % at each load, 60 s to settle and 45 s measured (`research/lut_sweep_2026-10-09.csv`, 82 min).
+
+```bash
+nvcc -O3 -Xcompiler -U_GNU_SOURCE -o research/gpu_stress research/gpu_stress.cu   # CUDA load generator
+python3 research/lut_sweep.py gpu cpu                                              # stop llanod / llano-guard first
+python3 research/build_lut.py research/lut_sweep_DATE.csv                          # writes fan_lut.json
+```
+
+For each load, the recommended speed is the slowest one within 1.5 °C of the coolest measured, with at most 2 points more throttling. It is keyed by the temperature the device runs at with that speed; rows are made non-decreasing, interpolated between and clamped at the ends. The higher of the CPU's and the GPU's speeds wins.
+
+| GPU °C | ≤42 | 47–64 |
+|---|---|---|
+| fan % | 30 | 60 |
+
+| CPU °C | ≤58 | 70 | ≥84 |
+|---|---|---|---|
+| fan % | 30 | 62 | 100 |
+
+- **GPU:** 100 % fan was never more than 1 °C cooler than 60 % (full load: 63.0 vs 64.0 °C; 0 % fan: 71.7 °C), and nothing throttled.
+- **CPU at high load:** the pad matters here. At full load, 0 % fan throttled 85 % of the time (0 % at 100 % fan); at 70 % load, throttling went 3 → 30 → 65 → 72 % as the fan slowed.
+- **GPU load heats the CPU:** at full GPU load the CPU sat at 79 °C with the fan at 100 % and 93 °C at 0 %, so under GPU load the CPU's row usually leads.
+- **Low confidence between 58 and 84 °C (CPU):** the duty-cycled 20 % and 40 % CPU loads gave readings that did not fall with more fan (at 20 % load, 100 % fan read hottest). Bursts at boost clocks, and probably the laptop's own fans, outweighed the pad there. A sweep with whole threads busy instead of a duty cycle, measured for longer, would pin it down.
+- These numbers differ from the earlier sweeps above, which name an RTX 3080 Ti and 20 threads; those may come from another machine.
 
 ## Protocol
 
