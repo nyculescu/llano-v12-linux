@@ -15,6 +15,11 @@ Fit to the three readings: dB ~ 57 + 30 * log10(rpm / 300), i.e. about +30 dB pe
 (300 -> 1175: +18.5 dB over x3.9; 1175 -> 1550: +3.5 dB over x1.32). Predicted: 400 rpm ~61 dB,
 1000 ~73, 2000 ~82, 2800 ~86.
 
+At the ears (the user's listening position) 1175 rpm read 62 dB, 13.5 dB under the reading by
+the pad. Assuming that offset holds at every speed (same source, same distance), the ear-level
+estimates are: 300 rpm ~44 dB, 400 ~47, 1000 ~60, 1550 ~65.5, 2000 ~68.5, 2800 ~73. The low
+end is the least sure: near 300-400 rpm the room's own background noise may dominate.
+
 Percent -> rpm is not measured. One README observation (after 50 %, one roller step gave
 1550 rpm) suggests about 29 rpm per percent, so 400 rpm ~14 %, 1000 ~35 %, 1500 ~52 %,
 2000 ~70 %; to be checked against the display.
