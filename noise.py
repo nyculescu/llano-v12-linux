@@ -2,17 +2,11 @@
 
 The pad speaks percent; people hear rpm. PERCENT_RPM maps one to the other (an estimate until
 measured against the pad's display), EAR_DB the rpm to the noise at the user's ears (measured
-with a phone app, research/noise_2026-10-09.txt). The limits: a cap during quiet hours
-(weekdays 22:00-07:00, 600 rpm) and a daytime cap (2000 rpm). `llano.py loud` lifts them until
-the end of the current quiet hours (or for DAY_OVERRIDE_H hours by day).
-
-Focus (Froonty's Quick Settings toggle, $XDG_STATE_HOME/focus/mode.json): Sleeping holds the
-quiet-hours cap at any time, Away the away cap (AWAY_MAX_RPM, none by default: nobody is home to
-hear it); Working and Auto keep the clock's caps.
+with a phone app, research/noise_2026-10-09.txt). Froonty's Quick Settings slider displays these
+estimates while setting the pad speed directly; there is no clock-based cap.
 
 Every value can be overridden in $XDG_CONFIG_HOME/llano/noise.json (same keys, lower case).
 """
-import datetime
 import json
 import os
 from pathlib import Path
@@ -27,23 +21,9 @@ DEFAULTS = {
     # [rpm, dB at the user's ears], 2026-10-09; the laptop alone was 37.5 dB.
     'ear_db': [[0, 37.5], [300, 40.5], [400, 43.0], [500, 45.5], [600, 49.5], [700, 51.5],
                [800, 53.5], [900, 55.5], [1000, 57.0], [1175, 62.0]],
-    # Monday = 0. A moment is quiet when its own weekday is listed and its time is at or after
-    # `from` or before `to`.
-    'quiet_days': [0, 1, 2, 3, 4],
-    'quiet_from': '22:00',
-    'quiet_to': '07:00',
-    'quiet_max_rpm': 600,
-    'day_max_rpm': 2000,
-    'day_override_h': 2,
-    # The cap while Focus is Away; null: none.
-    'away_max_rpm': None,
     # Bands for warnings: the highest rpm of each, then their names (NOISE.md).
     'bands': [[400, 'quiet'], [600, 'night'], [1000, 'audible'], [2000, 'loud'], [100000, 'very loud']],
 }
-
-
-def state_dir() -> Path:
-    return Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state') / 'llano'
 
 
 def policy() -> dict:
@@ -90,85 +70,15 @@ def band(rpm_value: float, p: dict | None = None) -> str:
     return next(name for top, name in (p or policy())['bands'] if rpm_value <= top)
 
 
-def _hm(text):
-    h, m = text.split(':')
-    return datetime.time(int(h), int(m))
-
-
-def quiet_window(now: datetime.datetime, p: dict | None = None):
-    """(quiet now, when the current quiet or day stretch ends)."""
-    p = p or policy()
-    start, end = _hm(p['quiet_from']), _hm(p['quiet_to'])
-
-    def quiet(t):
-        return t.weekday() in p['quiet_days'] and (t.time() >= start or t.time() < end)
-
-    is_quiet = quiet(now)
-    t = now.replace(second=0, microsecond=0)
-    for _ in range(8 * 24 * 60 // 15):  # the next change, in 15-minute steps (times are on the quarter)
-        t += datetime.timedelta(minutes=15 - t.minute % 15)
-        if quiet(t) != is_quiet:
-            return is_quiet, t
-    return is_quiet, None
-
-
-def override_until() -> float | None:
-    try:
-        until = float((state_dir() / 'loud-until').read_text())
-    except (OSError, ValueError):
-        return None
-    return until if until > datetime.datetime.now().timestamp() else None
-
-
-def set_override(on: bool) -> float | None:
-    path = state_dir() / 'loud-until'
-    if not on:
-        path.unlink(missing_ok=True)
-        return None
+def limit() -> dict:
+    """Compatibility shape for noise status; the speed is selected directly."""
     p = policy()
-    now = datetime.datetime.now()
-    is_quiet, change = quiet_window(now, p)
-    until = change if is_quiet and change else now + datetime.timedelta(hours=p['day_override_h'])
-    state_dir().mkdir(parents=True, exist_ok=True)
-    path.write_text(f'{until.timestamp():.0f}\n')
-    return until.timestamp()
-
-
-FOCUS_MODES = ('working', 'sleeping', 'away', 'auto')
-
-
-def focus() -> str:
-    """The Focus mode Froonty set ($XDG_STATE_HOME/focus/mode.json); 'auto' when none."""
-    root = Path(os.environ.get('XDG_STATE_HOME') or Path.home() / '.local/state')
-    try:
-        mode = json.loads((root / 'focus/mode.json').read_text()).get('mode')
-    except (OSError, ValueError, AttributeError):
-        return 'auto'
-    return mode if mode in FOCUS_MODES else 'auto'
-
-
-def limit(now: datetime.datetime | None = None) -> dict:
-    """The cap in force: {quiet, until (ISO), max_rpm, max_percent, override_until, focus}."""
-    p = policy()
-    now = now or datetime.datetime.now()
-    is_quiet, change = quiet_window(now, p)
-    over = override_until()
-    mode = focus()
-    if over:
-        max_rpm = None
-    elif mode == 'away':
-        max_rpm = p['away_max_rpm']
-    elif mode == 'sleeping':
-        max_rpm = p['quiet_max_rpm']
-    else:
-        max_rpm = p['quiet_max_rpm'] if is_quiet else p['day_max_rpm']
     return {
-        'quiet': is_quiet,
-        'until': change.isoformat(timespec='minutes') if change else None,
-        'max_rpm': max_rpm,
-        'max_percent': 100 if max_rpm is None else percent(max_rpm, p),
-        'override_until': over,
-        'focus': mode,
+        'quiet': False,
+        'until': None,
+        'max_rpm': None,
+        'max_percent': 100,
+        'override_until': None,
         'mapping_measured': p['percent_rpm_measured'],
     }
 

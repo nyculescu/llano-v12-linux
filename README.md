@@ -14,18 +14,19 @@ Neither needs any dependencies beyond Python 3.10+ and access to the pad's `/dev
 python3 llano.py status          # speed 60% (pad control)  lights on  raw 88 3c 00 03 04 00 ff 35
 python3 llano.py speed 100       # software control, fan at 100 %
 python3 llano.py speed 0         # lowest speed, 300 rpm: 0 % does not stop the fan
+python3 llano.py rpm 600         # nearest whole-percent setting at or below 600 rpm
 python3 llano.py off             # the pad off, fan and lights
 python3 llano.py release         # hand speed control back to the pad's roller
 python3 llano.py lock            # panic: fan off, and every program using Pad is refused
 python3 llano.py unlock          # back to the speed and control from before the lock
 python3 llano.py last            # who changed the pad last
-python3 llano.py loud            # lift the noise limits until quiet hours end
-python3 llano.py quiet           # back to the noise limits
 ```
 
-**Noise limits** ([NOISE.md](NOISE.md)): every speed is capped to 600 rpm (12 %) in quiet hours (weekdays 22:00–07:00) and 2000 rpm (68 %) by day, unless lifted with `loud`. `contrib/install-enforcer.sh` installs a user timer that lowers a software-set speed above the limit every 5 minutes; the roller is left alone. The status output's second line, `noise {json}`, gives the estimated rpm and dB at the ears and the limit in force.
+The status output's second line, `noise {json}`, gives the estimated RPM and dB at the ears. These are informational estimates; speeds are not limited by a clock.
 
 The lock and a log of who drove the pad (`control.log`, last 200 writes: `$LLANO_CLIENT`, else the systemd unit, else the script) live in `~/.local/state/llano`. The lock binds everything that goes through `Pad` (this CLI, `llanod`, `cpu_guard`, the research scripts, Froonty's Fan tab); `llanod` and `cpu_guard` wait while it holds. It cannot stop a program that writes `/dev/hidraw*` itself, since the udev rule gives all of the user's programs access: a lock no user program can lift needs a root helper. The pad's roller always works.
+
+If an earlier version installed `llano-enforce.timer`, remove it with `systemctl --user disable --now llano-enforce.timer`. The `enforce` command remains as a compatibility no-op for an already-installed timer.
 
 If you get `Permission denied`, install the udev rule, which gives the logged-in user access to the pad:
 

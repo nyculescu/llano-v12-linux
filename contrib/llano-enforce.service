@@ -1,8 +1,0 @@
-[Unit]
-Description=llano V12 Ultra pad: lower a software-set speed above the noise limit
-
-[Service]
-Type=oneshot
-# contrib/install-enforcer.sh writes the repository's path here.
-ExecStart=/usr/bin/python3 @REPO@/llano.py enforce
-Environment=LLANO_CLIENT=noise limit (timer)

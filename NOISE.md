@@ -1,6 +1,6 @@
-# Noise: measurements, warnings and limits
+# Noise: measurements and estimates
 
-The pad is set in percent, but what you hear is rpm. This page says how loud each speed is at the listening position, which speeds count as quiet, audible or loud, and the limits that `llano.py` applies by itself. The code is `noise.py`. Every value below can be changed in `~/.config/llano/noise.json`, using the same keys in lower case.
+The pad is set in percent, but what you hear is rpm. This page describes estimated noise at the listening position and the RPM mapping used by `llano.py`. The code is `noise.py`. The RPM and acoustic measurements can be changed in `~/.config/llano/noise.json`, using the same keys in lower case.
 
 ## Measurements
 
@@ -12,7 +12,7 @@ These are phone sound-meter readings at the user's ears, taken on 2026-10-09 (`r
 | 300 | 40–41 | |
 | 400 | 42–44 | bearable, enough for normal use |
 | 500 | 45–46 | |
-| 600 | 49–50 | **the most that may run at night** |
+| 600 | 49–50 | a quiet everyday setting |
 | 700 | 51–52 | |
 | 800 | 53–54 | at low activity, more speed changes nothing |
 | 900 | 55–56 | |
@@ -42,18 +42,10 @@ Froonty's Fan tab colours the estimated rpm and dB by band.
 | loud | 2000 rpm | ≈ 69 dB (estimated) | orange |
 | very loud | above 2000 rpm | | red |
 
-## Limits
+## RPM targets
 
-`llano.py` caps every speed it is asked to set. That covers the CLI, `llanod`, `cpu_guard`, the research scripts and the Fan tab. A capped write is logged with the speed that was asked for.
-
-- **Quiet hours: weekdays 22:00–07:00, 600 rpm (12 %).** A moment counts as quiet when its own day is Monday to Friday and the time is at or after 22:00 or before 07:00. So Friday 22:00–24:00 is quiet, but the hours after midnight on Saturday are not. Likewise Sunday 22:00–24:00 is not quiet, but Monday 00:00–07:00 is. Change `quiet_days`, `quiet_from` and `quiet_to` to change this.
-- **Daytime: 2000 rpm (68 %).** 2800 rpm is never needed for cooling (`fan_lut.json`: full speed was at most 1 °C cooler than 60 %) and is unbearable.
-- **Manual overrides:**
-  - `llano.py loud`, or **Loud until 07:00** in the Fan tab, lifts the limits until the current quiet hours end. By day it lifts them for 2 hours. `llano.py quiet` puts them back and lowers the speed at once.
-  - Turning the **roller** is manual too. While the pad reports its own control, nothing lowers its speed.
-  - The **lock** (`llano.py lock`, the Fan lock panic button) turns the fan off whatever the limits say.
-- **Enforcement:** the `llano-enforce` user timer runs `llano.py enforce` every 5 minutes, and again at 22:00 on weekdays. It lowers a software-set speed that is above the limit in force, so a fast speed set in the evening does not run all night. Install it with `contrib/install-enforcer.sh`. Remove it with `systemctl --user disable --now llano-enforce.timer`.
+`llano.py rpm N` sets the highest whole-percent speed whose RPM estimate is at or below `N`. Froonty's Quick Settings pad slider uses this command for continuous targets. Noise stages are estimates, not enforced limits.
 
 ## Not covered
 
-A program that writes `/dev/hidraw*` itself bypasses the limits, as it bypasses the lock. Only an always-running daemon could catch the pad being changed between two timer runs; the 5-minute timer is the compromise.
+A program that writes `/dev/hidraw*` itself bypasses the lock. The pad's roller or another program using llano can change the slider's speed.

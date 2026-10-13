@@ -17,25 +17,22 @@ sum to 0xFF (byte 7 = ~sum of bytes 0-6).
   python3 llano.py status
   python3 llano.py speed 0-100     # take software control and set the fan speed (the pad on, lights too;
                                    # at 0 % the fan still turns at its slowest)
+  python3 llano.py rpm 300-2800    # set the nearest whole-percent speed at or below this rpm target
   python3 llano.py off             # the whole pad off: fan and lights
   python3 llano.py release         # hand speed control back to the pad's buttons
   python3 llano.py lock            # the pad off; every Pad write is refused until unlock
   python3 llano.py unlock          # back to the speed and control from before the lock
   python3 llano.py last            # who changed the pad last (control.log)
-  python3 llano.py loud            # lift the noise limits until quiet hours end (or for 2 h by day)
-  python3 llano.py quiet           # back to the noise limits
-  python3 llano.py noise           # the noise limit in force, as JSON
-  python3 llano.py enforce         # lower a software-set speed above the limit (the timer runs this)
+  python3 llano.py noise           # noise estimates and compatibility metadata, as JSON
+  python3 llano.py enforce         # compatibility no-op; there is no clock-based speed cap
 
 The lock and the control log live in $XDG_STATE_HOME/llano (~/.local/state/llano). The lock
 binds every program that drives the pad through Pad (this CLI, llanod, cpu_guard, the
 research scripts, Froonty's Fan tab); a program writing /dev/hidraw* itself is not stopped,
 since the udev rule gives every program of the user access. The pad's roller still works.
 Each write logs who made it: $LLANO_CLIENT, else the systemd unit, else the script.
-
-Noise limits (noise.py, NOISE.md): every speed is capped to the limit in force (600 rpm in quiet
-hours, weekdays 22:00-07:00; 2000 rpm by day), unless `llano.py loud` lifted it. A speed the pad
-holds under its own control (the roller) is the user's and is left alone.
+Froonty's Quick Settings slider selects the pad RPM directly. Noise figures are estimates;
+they do not impose a speed cap.
 """
 import fcntl
 import json
@@ -184,24 +181,21 @@ class Pad:
         log_control(action, speed, requested)
 
     def set_speed(self, pct: int, action: str = 'speed') -> int:
-        """Sets the speed, capped to the noise limit in force; returns the speed set."""
+        """Sets the requested speed without a clock-based cap; returns the speed set."""
         if not 0 <= pct <= 100:
             raise LlanoError(f'speed must be 0-100, got {pct}')
-        applied = min(pct, noise.limit()['max_percent'])
-        self._write_state(CTL_SOFTWARE, applied, action, requested=pct)
-        return applied
+        self._write_state(CTL_SOFTWARE, pct, action, requested=pct)
+        return pct
+
+    def set_rpm(self, target: int) -> int:
+        """Sets the highest whole-percent speed whose estimate is at or below `target` rpm."""
+        if not 300 <= target <= 2800:
+            raise LlanoError(f'rpm target must be 300-2800, got {target}')
+        return self.set_speed(noise.percent(target))
 
     def enforce(self) -> bool:
-        """Lowers a software-set speed above the limit in force; True when it did."""
-        if read_lock() is not None:
-            return False
-        st = self.status()
-        if st[0] != 0x80:  # under the pad's own control: the roller is the user's choice
-            return False
-        if st[1] <= noise.limit()['max_percent']:
-            return False
-        self.set_speed(st[1], 'enforce')
-        return True
+        """Compatibility no-op; there is no clock-based speed cap to enforce."""
+        return False
 
     def release(self) -> None:
         self._write_state(CTL_PAD, self.status()[1], 'release')
@@ -260,6 +254,8 @@ def main():
                 pass
             elif len(args) == 2 and args[0] == 'speed':
                 pad.set_speed(int(args[1]))
+            elif len(args) == 2 and args[0] == 'rpm':
+                pad.set_rpm(int(args[1]))
             elif args == ['release']:
                 pad.release()
             elif args == ['off']:
@@ -270,11 +266,6 @@ def main():
                 pad.unlock()
             elif args == ['enforce']:
                 pad.enforce()
-            elif args in (['loud'], ['quiet']):
-                noise.set_override(args == ['loud'])
-                log_control(args[0], None)
-                if args == ['quiet']:
-                    pad.enforce()
             else:
                 sys.exit(__doc__)
             time.sleep(0.1)
